@@ -1,0 +1,784 @@
+#include "RTClib.h"
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <EEPROM.h>
+#include <SpeedyStepper.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+#define OLED_RESET -1
+#define OLED_ADDRESS 0x3C
+
+#define BTN_UP 12
+#define BTN_DWN 10
+#define BTN_SEL 11
+
+#define STEP 2
+#define DIR 3
+#define MS 4
+#define STEP_EN 5
+
+#define OPT A0
+#define OPT_THRESH 400
+
+#define TIMEOUT 500
+
+const unsigned char cat_splash [] PROGMEM = {
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x3f, 0xff, 0xcf, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x3f, 0xff, 0xcf, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x0f, 0xff, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x0f, 0xff, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x0f, 0xff, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x0f, 0xff, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xfe, 0x38, 0xe0, 0x0e, 0x00, 0xe0, 0x0e, 0x38, 0xff, 
+  0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xfe, 0x38, 0xe0, 0x0e, 0x00, 0xe0, 0x0e, 0x38, 0xff, 
+  0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xfe, 0x38, 0xe0, 0x0e, 0x00, 0xe0, 0x0e, 0x38, 0xff, 
+  0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xfe, 0x38, 0xfc, 0x7f, 0xc7, 0xfc, 0x7e, 0x38, 0xff, 
+  0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xfe, 0x38, 0xfc, 0x7f, 0xc7, 0xfc, 0x7e, 0x38, 0xff, 
+  0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xfe, 0x38, 0xfc, 0x7f, 0xc7, 0xfc, 0x7e, 0x38, 0xff, 
+  0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xfe, 0x07, 0xfc, 0x7f, 0xc7, 0xfc, 0x7f, 0xc7, 0xff, 
+  0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xfe, 0x07, 0xfc, 0x7f, 0xc7, 0xfc, 0x7f, 0xc7, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x0f, 0xfe, 0x07, 0xfc, 0x7f, 0xc7, 0xfc, 0x7f, 0xc7, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x0f, 0xfe, 0x38, 0xfc, 0x7f, 0xc7, 0xfc, 0x7f, 0xc7, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x0f, 0xfe, 0x38, 0xfc, 0x7f, 0xc7, 0xfc, 0x7f, 0xc7, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x0f, 0xfe, 0x38, 0xfc, 0x7f, 0xc7, 0xfc, 0x7f, 0xc7, 0xff, 
+  0xff, 0xff, 0x00, 0xff, 0x00, 0x00, 0x0f, 0xfe, 0x38, 0xe0, 0x0f, 0xc7, 0xfc, 0x7f, 0xc7, 0xff, 
+  0xff, 0xff, 0x00, 0xff, 0x00, 0x00, 0x0f, 0xfe, 0x38, 0xe0, 0x0f, 0xc7, 0xfc, 0x7f, 0xc7, 0xff, 
+  0xff, 0xff, 0x00, 0xff, 0x00, 0x00, 0x0f, 0xfe, 0x38, 0xe0, 0x0f, 0xc7, 0xfc, 0x7f, 0xc7, 0xff, 
+  0xff, 0xff, 0x00, 0xff, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xf0, 0x0f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xf0, 0x0f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0xff, 0xc0, 0xfc, 0x7e, 0x07, 0xe0, 0x7e, 0x38, 0xff, 
+  0xf0, 0x0f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0xff, 0xc0, 0xfc, 0x7e, 0x07, 0xe0, 0x7e, 0x38, 0xff, 
+  0xf0, 0x0f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0xff, 0xc0, 0xfc, 0x7e, 0x07, 0xe0, 0x7e, 0x38, 0xff, 
+  0xf0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0x3f, 0xe3, 0x8e, 0x38, 0xe3, 0x8e, 0x38, 0xff, 
+  0xf0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0x3f, 0xe3, 0x8e, 0x38, 0xe3, 0x8e, 0x38, 0xff, 
+  0xf0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0x3f, 0xe3, 0x8e, 0x38, 0xe3, 0x8e, 0x38, 0xff, 
+  0xf0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0x3f, 0xe3, 0x8e, 0x38, 0xe3, 0x8f, 0xc7, 0xff, 
+  0xf0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0x3f, 0xe3, 0x8e, 0x38, 0xe3, 0x8f, 0xc7, 0xff, 
+  0xf0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x0f, 0xfe, 0x3f, 0xe3, 0x8e, 0x38, 0xe3, 0x8f, 0xc7, 0xff, 
+  0xf0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x0f, 0xfe, 0x3f, 0xe0, 0x0e, 0x38, 0xe3, 0x8f, 0xc7, 0xff, 
+  0xf0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x0f, 0xfe, 0x3f, 0xe0, 0x0e, 0x38, 0xe3, 0x8f, 0xc7, 0xff, 
+  0xf0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x0f, 0xfe, 0x3f, 0xe0, 0x0e, 0x38, 0xe3, 0x8f, 0xc7, 0xff, 
+  0xf0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x0f, 0xff, 0xc0, 0xe3, 0x8e, 0x07, 0xe0, 0x7f, 0xc7, 0xff, 
+  0xf0, 0xff, 0x00, 0x00, 0x00, 0x00, 0x0f, 0xff, 0xc0, 0xe3, 0x8e, 0x07, 0xe0, 0x7f, 0xc7, 0xff, 
+  0xf0, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x0f, 0xff, 0xc0, 0xe3, 0x8e, 0x07, 0xe0, 0x7f, 0xc7, 0xff, 
+  0xf0, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xf0, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xf0, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xf0, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0x0f, 0xf0, 0x00, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0x0f, 0xf0, 0x00, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0x0f, 0xf0, 0x00, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0x0f, 0xf0, 0x00, 0x00, 0x00, 0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+};
+
+const unsigned char caticon_full [] PROGMEM = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x20, 0x00, 0x00, 0x70, 0x00, 0x70, 0x00, 0x00, 
+  0x78, 0x00, 0xf0, 0x00, 0x00, 0x7f, 0xff, 0xf0, 0x00, 0x00, 0xff, 0xff, 0xf8, 0x00, 0x01, 0xff, 
+  0xff, 0xfc, 0x00, 0x03, 0xff, 0xff, 0xfe, 0x00, 0x07, 0xff, 0xff, 0xff, 0x00, 0x07, 0xff, 0xff, 
+  0xff, 0x00, 0x07, 0xff, 0xff, 0xff, 0x00, 0x07, 0xff, 0xff, 0xff, 0x00, 0x07, 0xff, 0xff, 0xff, 
+  0x00, 0x07, 0xff, 0xff, 0xff, 0x00, 0x07, 0xff, 0xff, 0xff, 0x00, 0x03, 0xff, 0xff, 0xfe, 0x00, 
+  0x01, 0xff, 0xff, 0xfc, 0x00, 0x00, 0xff, 0xff, 0xf8, 0x00, 0x00, 0x7f, 0xff, 0xf0, 0x00, 0x00, 
+  0x1f, 0xff, 0xc0, 0x00
+};
+
+const unsigned char caticon_empty [] PROGMEM = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x20, 0x00, 0x00, 0x50, 0x00, 0x50, 0x00, 0x00, 
+  0x48, 0x00, 0x90, 0x00, 0x00, 0x47, 0xff, 0x10, 0x00, 0x00, 0x80, 0x00, 0x08, 0x00, 0x01, 0x00, 
+  0x00, 0x04, 0x00, 0x02, 0x00, 0x00, 0x02, 0x00, 0x04, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 
+  0x01, 0x00, 0x04, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x01, 
+  0x00, 0x04, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x02, 0x00, 
+  0x01, 0x00, 0x00, 0x04, 0x00, 0x00, 0x80, 0x00, 0x08, 0x00, 0x00, 0x40, 0x00, 0x10, 0x00, 0x00, 
+  0x3f, 0xff, 0xe0, 0x00
+};
+
+const int epd_bitmap_allArray_LEN = 1;
+const unsigned char* epd_bitmap_allArray[3] = {
+  cat_splash, caticon_full, caticon_empty
+};
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+SpeedyStepper stepper1;
+
+RTC_DS3231 rtc;
+
+int hours = 0;
+int minutes = 0;
+
+int displayHours = 0;
+int displayMinutes;
+int displayAMPM;
+
+int menu_state = 0;
+int arrow_pos = 0;
+int timeset_state = 0; // case number to step through setTime function
+int timeset = 0; // 0 -> feed time, 1 -> clock time 
+int fed = 0;
+int feeds = 3;
+
+bool up_last_state = HIGH;
+bool dwn_last_state = HIGH;
+bool sel_last_state = HIGH;
+
+bool up_pressed = LOW;
+bool dwn_pressed = LOW;
+bool sel_pressed = LOW;
+
+unsigned long curr_time;
+unsigned long dwn_pressed_time;
+unsigned long up_pressed_time;
+unsigned long sel_pressed_time;
+
+int set_hours = 0;
+int set_minutes = 0;
+int set_ampm = 0; // 0 -> AM, 1 -> PM
+
+int feed_hours = 0;
+int feed_minutes = 0;
+
+int clock_hours;
+int clock_minutes;
+
+int converted_hours;
+int converted_minutes;
+int ampm;
+
+void setup() {
+  pinMode(BTN_UP, INPUT_PULLUP);
+  pinMode(BTN_DWN, INPUT_PULLUP);
+  pinMode(BTN_SEL, INPUT_PULLUP);
+
+  pinMode(MS, INPUT);
+  pinMode(STEP, OUTPUT);
+  pinMode(DIR, OUTPUT);
+  pinMode(STEP_EN, OUTPUT);
+
+  pinMode(OPT, INPUT);
+
+  digitalWrite(MS, HIGH);
+  digitalWrite(STEP_EN, HIGH);
+
+  stepper1.connectToPins(STEP, DIR);
+  stepper1.setStepsPerRevolution(400);
+  stepper1.setSpeedInRevolutionsPerSecond(2);
+  stepper1.setAccelerationInRevolutionsPerSecondPerSecond(20);
+  
+  Serial.begin(9600);
+  if (! rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    Serial.flush();
+    abort();
+  }
+
+  if(!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); 
+  }
+
+  feed_hours = EEPROM.read(0);
+  feed_minutes = EEPROM.read(1);
+
+  display.clearDisplay();
+  display.invertDisplay(true);
+
+  display.drawBitmap(0, 0, cat_splash, 128, 64, WHITE);
+
+
+  display.display();
+  homeCaddy();
+  delay(2000);
+  
+  display.clearDisplay();
+  display.display();
+
+  display.invertDisplay(false);
+}
+
+
+int convertTime(int conv_hours, int conv_minutes) {
+  if (conv_hours >= 12) {
+    ampm = 1;
+  } else {
+    ampm = 0;
+  }
+
+  if (conv_hours > 12) {
+    converted_hours = conv_hours - 12;
+  } else if (conv_hours == 0) {
+    converted_hours = 12;
+  } else {
+    converted_hours = conv_hours;
+  }
+
+  converted_minutes = conv_minutes;
+
+  return converted_hours, converted_minutes, ampm; 
+}
+
+
+void displayTime(int dis_hours, int dis_minutes, int dis_ampm, int x, int y, int set) {
+    // takes the hour (24-hour format) and minutes and displays them in 12-hour AM/PM format on the OLED
+    // hours -> hours as an int, 0-23
+    // minutes -> minutes as an int, 0-59
+    // x -> x position of cursor
+    // y -> y position of cursor 
+    // set -> 0 = regular, 1 = leading zero for set time
+    
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(x, y);
+
+    if (set == 0) {
+      convertTime(dis_hours, dis_minutes); 
+      displayHours = converted_hours;
+      displayMinutes = converted_minutes;
+      displayAMPM = ampm;    
+    } 
+    else if (set == 1) {
+      displayHours = dis_hours;
+      displayMinutes = dis_minutes;
+      displayAMPM = dis_ampm;
+      if (displayHours < 10) {
+        display.print("0");
+      }
+    }
+
+    display.print(displayHours);
+    display.print(":");
+    if (dis_minutes < 10) {
+      display.print(F("0"));
+    }
+    display.print(dis_minutes, DEC);
+
+    if (displayAMPM == 0) {
+      display.print(" AM");
+    } else {
+      display.print(" PM");
+    }
+}
+
+bool moveCaddy(int direction, int steps) {
+  // Moves caddy to next feed position
+  bool found_home = LOW;
+  digitalWrite(STEP_EN, LOW);
+  stepper1.setCurrentPositionInSteps(0);
+  stepper1.setupMoveInSteps(steps*direction);
+
+  while(!stepper1.motionComplete()) {
+    stepper1.processMovement();
+
+    if (analogRead(OPT) < OPT_THRESH) {
+      stepper1.setupStop();
+      found_home = HIGH;
+    }
+  }
+
+  delay(200);
+  digitalWrite(STEP_EN, HIGH);
+  
+
+  return found_home;
+}
+
+
+void homeCaddy() {
+  // Fine adjustment to white homing beacon
+  bool dir1 = moveCaddy(-1, 200);
+  Serial.println(dir1);
+  bool dir2 = moveCaddy(1, 400);
+  Serial.println(dir2);
+
+  if (!dir1 && !dir2) {
+    Serial.println("Switch feeder");
+    moveCaddy(1, 5000);
+  } else {
+    Serial.println("Homed");
+  }
+
+  moveCaddy(-1, 44);
+  stepper1.setCurrentPositionInSteps(0);
+}
+
+
+void feedingTime() {
+  // Interrupt for when it's feeding time
+  // need to add feed bucket switching with motor and optical sensor 
+  
+  display.clearDisplay();
+
+  display.setTextSize(2);
+  display.setCursor(24, 9);
+  display.print("Feeding");
+
+  display.setCursor(34, 39);
+  display.print("Time!");
+
+  display.display();
+
+  //switchCaddy(1, 5000);
+  //switchCaddy(-1, 67);
+  digitalWrite(STEP_EN, LOW);
+  //moveCaddy(1, 5000);
+  //moveCaddy(-1, 63);
+  stepper1.moveRelativeInSteps(4370);
+  digitalWrite(STEP_EN, HIGH);
+  moveCaddy(-1, 44);
+  //homeCaddy();
+
+  fed = fed + 1;
+  feeds = feeds - 1;
+}
+
+
+void drawHomescreen() {
+  // Draw default homescreen with current time, next feeding time, cat
+  
+  display.clearDisplay();
+
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(24, 0);
+
+  displayTime(hours, minutes, 0, 18, 0, 0);
+  display.drawLine(0, 22, 128, 22, SSD1306_WHITE);
+
+  //display.drawLine(0, 47, 128, 47, SSD1306_WHITE);
+  display.setCursor(10, 30);
+  display.setTextSize(1.75);
+  display.print("Next Feed: ");
+
+  displayTime(feed_hours, feed_minutes, 0, 75, 30, 0);
+
+  if (feeds == 3) {
+    display.drawBitmap(0, 44, caticon_full, 37, 20, WHITE);
+    display.drawBitmap(48, 44, caticon_full, 37, 20, WHITE);
+    display.drawBitmap(96, 44, caticon_full, 37, 20, WHITE);  
+  } else if (feeds == 2) {
+    display.drawBitmap(0, 44, caticon_empty, 37, 20, WHITE);
+    display.drawBitmap(48, 44, caticon_full, 37, 20, WHITE);
+    display.drawBitmap(96, 44, caticon_full, 37, 20, WHITE);  
+  } else if (feeds == 1) {
+    display.drawBitmap(0, 44, caticon_empty, 37, 20, WHITE);
+    display.drawBitmap(48, 44, caticon_empty, 37, 20, WHITE);
+    display.drawBitmap(96, 44, caticon_full, 37, 20, WHITE);  
+  } else if (feeds == 0) {
+    // display please refill screen
+    menu_state = 4;
+  }
+  
+  display.display();
+}
+
+
+void drawMenu(int arrow_pos) {  
+  // Draw menu screen with title, menu options, and toggling arrow
+  // arrow_pos -> int that describes where the arrow is currently pointing. 0 = set feed time, 1 = set clock time, 2 = back
+  
+  display.clearDisplay();
+
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+
+  display.print("Menu");
+  display.setCursor(0, 10);
+  display.drawLine(0, 10, display.width()-1, 10, SSD1306_WHITE);
+  display.setCursor(15, 20);
+  display.print("Set feed time");
+  display.setCursor(15, 30);
+  display.print("Set clock time");
+  display.setCursor(15, 40);
+  display.print("Switch caddy");
+  display.setCursor(15, 50);
+  display.print("Back");
+
+  if (arrow_pos == 0) {
+    display.drawTriangle(0, 18, 0, 30, 10, 24, SSD1306_WHITE);
+  } else if (arrow_pos == 1) {
+    display.drawTriangle(0, 28, 0, 40, 10, 34, SSD1306_WHITE);
+  } else if (arrow_pos == 2) {
+    display.drawTriangle(0, 38, 0, 50, 10, 44, SSD1306_WHITE);
+  } else if (arrow_pos == 3) {
+    display.drawTriangle(0, 48, 0, 60, 10, 54, SSD1306_WHITE);
+  }
+
+  display.display();
+}
+
+
+void setTime(int state, int set) {
+  // Function to set either feed or clock time 
+  // state -> tells function which value it's setting. 0 = initialize, 1 = set hours, 2 = set minutes, 3 = set AM/PM
+  // set -> 0 for feed time, 1 for clock time 
+  
+  switch (state) {
+    case 0:
+      // INITIALIZATION
+      display.clearDisplay();
+
+      if (set == 1) {
+        convertTime(hours, minutes);
+      } else if (set == 0) {
+        convertTime(feed_hours, feed_minutes);
+      }
+      
+      set_hours = converted_hours;
+      set_minutes = converted_minutes;
+      set_ampm = ampm;
+
+      displayTime(set_hours, set_minutes, set_ampm, 14, 32, 1);
+
+      display.drawTriangle(17, 27, 27, 15, 37, 27, SSD1306_WHITE);
+      display.drawTriangle(17, 52, 27, 64, 37, 52, SSD1306_WHITE);
+
+      timeset_state = 1;
+    
+      break;
+
+    case 1:
+      // SET HOURS
+      display.clearDisplay();
+
+      display.setTextSize(1);
+      
+      if (set == 1) {
+        display.setCursor(11, 0);
+        display.print("Set the clock time");
+      } else if (set == 0) {
+        display.setCursor(13, 0);
+        display.print("Set the feed time");
+      }
+
+      display.setTextSize(2);
+
+       if (up_pressed) {
+        set_hours++;
+        if (set_hours >= 13) {
+          set_hours = 12;
+        }
+        display.fillTriangle(15, 26, 25, 16, 35, 26, SSD1306_WHITE);
+        up_pressed = LOW;
+       }
+
+        if (dwn_pressed) {
+          set_hours = set_hours -1;
+          if (set_hours < 1) {
+            set_hours = 1;
+          }
+          display.fillTriangle(15, 52, 25, 62, 35, 52, SSD1306_WHITE);
+          dwn_pressed = LOW;
+        }
+
+      if (sel_pressed) {
+        if (set == 0) {
+          feed_hours = set_hours;
+        } else {
+          clock_hours = set_hours;
+        }
+        timeset_state = 2;
+        sel_pressed = LOW;
+      }
+    
+      display.setTextSize(2);
+      display.setCursor(39, 50);
+
+      displayTime(set_hours, set_minutes, set_ampm, 14, 32, 1);
+
+      display.drawTriangle(15, 26, 25, 16, 35, 26, SSD1306_WHITE);
+      display.drawTriangle(15, 52, 25, 62, 35, 52, SSD1306_WHITE);
+
+      display.display();
+
+      break;
+
+    case 2:
+      // SET MINUTES
+      display.clearDisplay();
+
+      display.setTextSize(1);
+      
+      if (set == 1) {
+        display.setCursor(11, 0);
+        display.print("Set the clock time");
+      } else if (set == 0) {
+        display.setCursor(13, 0);
+        display.print("Set the feed time");
+      }
+
+      display.setTextSize(2);
+      
+      if (up_pressed) {
+        set_minutes = set_minutes + 1;
+        if (set_minutes == 60) {
+          set_minutes = 59;
+        }
+        display.fillTriangle(50, 26, 60, 16, 70, 26, SSD1306_WHITE);
+        up_pressed = LOW;
+      } 
+
+      if (dwn_pressed) {
+        set_minutes = set_minutes - 1;
+        if (set_minutes == -1) {
+          set_minutes = 0;
+        }
+        display.fillTriangle(50, 52, 60, 62, 70, 52, SSD1306_WHITE);
+        dwn_pressed = LOW;
+      }
+
+      if (sel_pressed) {
+        if (set == 0) {
+          feed_minutes = set_minutes;
+        } else {
+          clock_minutes = set_minutes;
+        }
+        timeset_state = 3;
+        sel_pressed = LOW;
+      }
+
+      display.setTextSize(2);
+      display.setCursor(39, 50);
+
+      displayTime(set_hours, set_minutes, set_ampm, 14, 32, 1);
+
+      display.drawTriangle(50, 26, 60, 16, 70, 26, SSD1306_WHITE);
+      display.drawTriangle(50, 52, 60, 62, 70, 52, SSD1306_WHITE);
+
+    
+      display.display();
+
+      break;
+
+      case 3:
+        // SET AM/PM
+        display.clearDisplay();
+        
+        display.setTextSize(1);
+
+        if (set == 1) {
+          display.setCursor(11, 0);
+          display.print("Set the clock time");
+        } else if (set == 0) {
+          display.setCursor(13, 0);
+          display.print("Set the feed time");
+        }
+
+        display.setTextSize(2);
+
+        if (up_pressed || dwn_pressed) {
+          if (set_ampm == 0) {
+            set_ampm = 1;
+          } else {
+            set_ampm = 0;
+          }
+        }
+
+        if (up_pressed) {
+         display.fillTriangle(87, 26, 97, 16, 107, 26, SSD1306_WHITE);
+        }
+
+        if (dwn_pressed) {
+         display.fillTriangle(87, 52, 97, 62, 107, 52, SSD1306_WHITE);
+        }
+
+        if (sel_pressed) {
+          if (set_hours != 12 && set_ampm == 1) {
+            set_hours = set_hours + 12;
+          }
+          if (set_hours == 12 && set_ampm == 0) {
+            set_hours = 0;
+          }
+          
+          if (set == 0) {
+            feed_hours = set_hours;
+            EEPROM.write(0, feed_hours);
+            EEPROM.write(1, feed_minutes);
+            homeCaddy();
+            fed = 0;
+          } else {
+            clock_hours = set_hours;
+            rtc.adjust(DateTime(2021, 1, 1, clock_hours, clock_minutes, 0));
+            Serial.print("Adjusted clock");
+            Serial.print(clock_hours);
+            Serial.println(clock_minutes);
+          }
+          
+          timeset_state = 0;
+          menu_state = 0;
+          sel_pressed = LOW;
+        }
+        
+        display.setTextSize(2);
+        display.setCursor(39, 50);
+
+        displayTime(set_hours, set_minutes, set_ampm, 14, 32, 1);
+
+        display.drawTriangle(87, 26, 97, 16, 107, 26, SSD1306_WHITE);
+        display.drawTriangle(87, 52, 97, 62, 107, 52, SSD1306_WHITE);
+
+        display.display();
+
+        break;
+  }
+}
+
+
+bool checkButtonPress() {
+  // Check for button presses
+  // returns boolean for up_pressed, dwn_pressed, sel_pressed, HIGH if pressed
+  curr_time = millis();
+  
+  if (!digitalRead(BTN_DWN) && dwn_last_state == HIGH) {
+    dwn_pressed = HIGH;
+    dwn_last_state = digitalRead(BTN_DWN);
+    dwn_pressed_time = millis();
+  } else {
+    dwn_last_state = digitalRead(BTN_DWN);
+  }
+  if (curr_time - dwn_pressed_time > 10) {
+    dwn_pressed = LOW;
+  }
+
+  if (!digitalRead(BTN_UP) && up_last_state == HIGH) {
+    up_pressed = HIGH;
+    up_last_state = digitalRead(BTN_UP);
+    up_pressed_time = millis();
+  } else {
+    up_last_state = digitalRead(BTN_UP);
+  }
+  if (curr_time - up_pressed_time > 10) {
+    up_pressed = LOW;
+  }
+
+  if (!digitalRead(BTN_SEL) && sel_last_state == HIGH) {
+    sel_pressed = HIGH;
+    sel_last_state = digitalRead(BTN_SEL);
+    sel_pressed_time = millis();
+  } else {
+    sel_last_state = digitalRead(BTN_SEL);
+  }
+  if (curr_time - sel_pressed_time > 10) {
+    sel_pressed = LOW;
+  }
+  return dwn_pressed, up_pressed, sel_pressed;
+}
+
+  
+void loop() {
+  dwn_pressed, up_pressed, sel_pressed = checkButtonPress(); // check for any button presses
+  DateTime now = rtc.now();
+  hours = now.hour();
+  minutes = now.minute(); // update current time
+
+  if (feed_hours == hours & feed_minutes == minutes & fed == 0) {
+    feedingTime();
+  } else if (feed_hours == hours & (feed_minutes + 1) == minutes & fed != 0) {
+    fed = 0; // if current time is equal to the set feed time, feed
+  }
+  
+  switch (menu_state) {
+    case 1:
+      // MENU SCREEN
+      drawMenu(arrow_pos);
+      if (dwn_pressed) {
+        if (arrow_pos != 3) {
+          arrow_pos = arrow_pos + 1;
+        }
+        dwn_pressed = LOW;
+      }
+      
+      else if (up_pressed) {
+        if (arrow_pos != 0) {
+          arrow_pos = arrow_pos - 1;
+        }
+        up_pressed = LOW;
+      }
+      
+      else if (sel_pressed) {
+        if (arrow_pos == 0) {
+          menu_state = 2;
+          arrow_pos = 0;
+        } else if (arrow_pos == 1) {
+          menu_state = 3;
+          arrow_pos = 0;
+        } else if (arrow_pos == 3) {
+          menu_state = 0;
+          arrow_pos = 0;
+        } else if (arrow_pos == 2) {
+          //switchCaddy(1, 5000);
+          //feeds = feeds - 1;
+          feedingTime();
+          menu_state = 0;
+        }
+        sel_pressed = LOW;
+      }
+      break;
+      
+    case 0:
+      // HOME SCREEN 
+      drawHomescreen();
+
+      if (sel_pressed) {
+        menu_state = 1;
+        arrow_pos = 0;
+        sel_pressed = LOW;
+      }
+      break;
+      
+    case 2:
+      // SET FEED TIME SCREEN 
+      setTime(timeset_state, 0);
+      
+      break;
+
+    case 3:
+      // SET CLOCK TIME SCREEN
+      setTime(timeset_state, 1);
+
+      break;
+
+    case 4:
+      // DISPLAY REFILL SCREEN
+      display.clearDisplay();
+      
+      display.setTextSize(2);
+      display.setCursor(0, 0);
+
+      display.print("REFILL AND");
+
+      display.setCursor(0, 22);
+      display.print("PRESS ANY");
+
+      display.setCursor(0, 44);
+      display.print("BUTTON");
+
+      display.display();
+
+      if (dwn_pressed || up_pressed || sel_pressed) {
+        feeds = 3;
+        menu_state = 0;
+      }
+  }
+  
+  
+}
